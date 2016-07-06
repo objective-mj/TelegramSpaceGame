@@ -11,6 +11,6 @@ mysql:
 game:
     image: php
     links:
-      - db
+      - mysql
     volumes:
       - "/src:/home/app/space_game"
