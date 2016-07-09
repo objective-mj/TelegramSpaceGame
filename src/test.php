@@ -17,9 +17,10 @@ $newgame = shield(0, 100, $newgame);
 
 print_r (stats(0, $newgame));
 
-for ($i = 0; $i < 30; $i++) {
+for ($i = 0; $i < 500; $i++) {
     try {
-        $newgame = move(0, rand(0,1), rand(0,100), $newgame);
+        $newgame = move(0, rand(0,100) / 100, rand(0,100), $newgame);
+        print ($newgame['spaceship']['coords_q']);
     } catch(Exception $e) {
         print_r (stats(0, $newgame));
         throw $e;

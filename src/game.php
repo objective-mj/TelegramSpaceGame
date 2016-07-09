@@ -132,7 +132,7 @@ function shield($telegramId, $energy, $game = null)
         $game = getGame($telegramId);
 
     if ($game['spaceship']['energy'] < $energy)
-        throw new Exception('Energy too low.');
+        throw new Exception('energy_low');
 
     $game['spaceship']['energy'] -= $energy;
     $game['spaceship']['shield'] += $energy;
@@ -161,98 +161,137 @@ function move($telegramId, $direction, $distance, $game = null)
 
     if ($direction < 0 || $direction > 1 ||
         $distance < 0 || $distance > 100)
-        throw new Exception('Invalid input');
+        throw new ErrorException('Invalid input');
 
-    if ($game['spaceship']['fuel'] < $distance/2)
-        throw new Exception('Not Enough Fuel Left');
+    if ($game['spaceship']['fuel'] < $distance / 2)
+        throw new Exception('fuel_low');
 
     $degree = round( $direction * 360 );
 
-    switch ($degree) {
-        case 0:
-        case 360:
-            $coordY = $game['spaceship']['coords_y'];
-            $coordQ = $game['spaceship']['coords_q'];
+    $coordX = $game['spaceship']['coords_x'];
+    $coordY = $game['spaceship']['coords_y'];
+    $coordQ = $game['spaceship']['coords_q'];
 
-            if ($coordY - $distance < -100 && in_array($coordQ, [1,2,3])) {
+    $newX = $degree ? $coordX - (-101 -$coordY) * sin($degree) : $coordX;
+    $newY = $degree ? $coordY + (-101 -$coordY) * cos($degree) : -101;
+
+    $factor = $distance / (sqrt( pow($newX-$coordX, 2) + pow($newY-$coordY, 2)));
+
+    $newX *= $factor;
+    $newY *= $factor;
+
+    if ($degree < 90) {
+            // right and up.
+            // x++,
+            if ($newX > 100 && in_array($coordQ, [3,6,9])) {
+                $x = 100;
+                $q = $coordQ;
+            } elseif ($newX > 100) {
+                $x = -200 + $newX;
+                $q = $coordQ + 1;
+            } else {
+                $x = $newX;
+                $q = $coordQ;
+            }
+
+            //y --
+            if ($newY < -100 && in_array($coordQ, [1,2,3])) {
                 $y = -100;
-                $x = $game['spaceship']['coords_x'];
-                $q = $coordQ;
-                if (!checkCoords($x, $y, $q, $game))
-                    throw new Exception('something is in the way');
-                $game['spaceship']['coords_y'] = $y;
-            } elseif ($coordY - $distance < -100) {
-                $y = 200 + $coordY - $distance;
-                $x = $game['spaceship']['coords_x'];
-                $q = $coordQ - 3;
-                if (!checkCoords($x, $y, $q, $game))
-                    throw new Exception('something is in the way');
-
-                $game['spaceship']['coords_y'] = $y;
-                $game['spaceship']['coords_q'] = $q;
+                $q = $q;
+            } elseif ($newY < -100) {
+                $y = 200 + $newY;
+                $q = $q - 3;
             } else {
-                $y = $coordY - $distance;
-                $x = $game['spaceship']['coords_x'];
-                $q = $coordQ;
-                if (!checkCoords($x, $y, $q, $game))
-                    throw new Exception('something is in the way');
-
-                $game['spaceship']['coords_y'] = $y;
+                $y = $newY;
+                $q = $q;
             }
-            break;
-        case 180:
-            $coordY = $game['spaceship']['coords_y'];
-            $coordQ = $game['spaceship']['coords_q'];
-
-            if ($coordY + $distance > 100 && in_array($coordQ, [7,8,9])) {
+    } elseif ($degree < 180) {
+            // right and down.
+            // x++,
+            if ($newX > 100 && in_array($coordQ, [3,6,9])) {
+                $x = 100;
+                $q = $coordQ;
+            } elseif ($newX > 100) {
+                $x = -200 + $newX;
+                $q = $coordQ + 1;
+            } else {
+                $x = $newX;
+                $q = $coordQ;
+            }
+            //y ++
+            if ($newY > 100 && in_array($coordQ, [7,8,9])) {
                 $y = 100;
-                $x = $game['spaceship']['coords_x'];
-                $q = $coordQ;
-                if (!checkCoords($x, $y, $q, $game))
-                    throw new Exception('something is in the way');
-
-                $game['spaceship']['coords_y'] = $y;
-            } elseif ($coordY + $distance > 100 ) {
-                $y = $coordY + $distance - 200;
-                $x = $game['spaceship']['coords_x'];
-                $q = $coordQ + 3;
-                if (!checkCoords($x, $y, $q, $game))
-                    throw new Exception('something is in the way');
-
-                $game['spaceship']['coords_y'] = $y;
-                $game['spaceship']['coords_q'] = $q;
+                $q = $q;
+            } elseif ($newY > 100) {
+                $y = -200 + $newY;
+                $q = $q + 3;
             } else {
-                $y = $coordY + $distance;
-                $x = $game['spaceship']['coords_x'];
+                $y = $newY;
+                $q = $q;
+            }
+
+    } elseif ($degree < 270) {
+            // left and down.
+            // x--
+            if ($newX < -100 && in_array($coordQ, [1,4,7])) {
+                $x = -100;
                 $q = $coordQ;
-                if (!checkCoords($x, $y, $q, $game))
-                    throw new Exception('something is in the way');
-
-                $game['spaceship']['coords_y'] = $y;
-            }
-            break;
-        case 90:
-        case 180:
-            $coordX = $game['spaceship']['coords_x'];
-            $coordQ = $game['spaceship']['coords_q'];
-
-            if ($coordX + $distance > 100 && in_array($coordQ, [3,6,9])) {
-                $game['spaceship']['coords_x'] = 100;
-            } elseif ($coordX + $distance > 100 ) {
-                $game['spaceship']['coords_x'] += $distance;
-                $game['spaceship']['coords_q'] += 1;
-            } elseif ($coordX + $distance < 100 && in_array($coordQ, [1,4,7])) {
-                $game['spaceship']['coords_x'] = -100;
-            } elseif ($coordX + $distance < 100) {
-                $game['spaceship']['coords_x'] += $distance;
-                $game['spaceship']['coords_q'] -= 1;
+            } elseif ($newX < -100) {
+                $x = 200 + $newX;
+                $q = $coordQ - 1;
             } else {
-                $game['spaceship']['coords_x'] += $distance;
+                $x = $newX;
+                $q = $coordQ;
             }
-            break;
-        default:
-            break;
+
+            //y ++
+            if ($newY > 100 && in_array($coordQ, [7,8,9])) {
+                $y = 100;
+                $q = $q;
+            } elseif ($newY > 100) {
+                $y = -200 + $newY;
+                $q = $q + 3;
+            } else {
+                $y = $newY;
+                $q = $q;
+            }
+
+    } elseif ($degree <= 360) {
+            //left and up
+            // x--,
+            if ($newX < -100 && in_array($coordQ, [1,4,7])) {
+                $x = -100;
+                $q = $coordQ;
+            } elseif ($newX < -100) {
+                $x = 200 + $newX;
+                $q = $coordQ - 1;
+            } else {
+                $x = $newX;
+                $q = $coordQ;
+            }
+
+            //y--
+            if ($newY < -100 && in_array($coordQ, [1,2,3])) {
+                $y = -100;
+                $q = $q;
+            } elseif ($newY < -100) {
+                $y = 200 + $newY;
+                $q = $q - 3;
+            } else {
+                $y = $newY;
+                $q = $q;
+            }
+    } else {
+            echo $degree;
+            throw new ErrorException('Something went wrong with the angle');
     }
+
+    if (!checkCoords($x, $y, $q, $game))
+        return $game;
+
+    $game['spaceship']['coords_y'] = $y;
+    $game['spaceship']['coords_x'] = $x;
+    $game['spaceship']['coords_q'] = $q;
 
     $game['spaceship']['fuel'] -= $distance / 2;
 

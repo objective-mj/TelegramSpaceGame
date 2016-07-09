@@ -30,7 +30,10 @@ function checkCoords($x, $y, $q, $game)
         return true;
     };
 
-    return $check($enemies) ? $check($meteors) ? $check($tanks) ? true : false : false : false;
+    if (!$check($tanks))
+        throw new Exception('tank_event');
+
+    return $check($enemies) && $check($meteors);
 
 }
 
