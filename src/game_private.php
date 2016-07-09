@@ -1,14 +1,211 @@
 <?php
 
-function newBoard()
+function fireLine($game, $direction)
 {
+    // Contruct a line |AB| that cuts through the ship and the given angle
+    // Convert all enenemies and meteors into same quadron and make them C
+    // Check is C is on or near |AB| by doing |AC|+|CB|==|AB|
 
+    $degree = round( $direction * 360 );
+
+    $coordX = $game['spaceship']['coords_x'];
+    $coordY = $game['spaceship']['coords_y'];
+
+    $Ax = $degree ? $coordX - (-900 -$coordY) * sin($degree) : $coordX;
+    $Ay = $degree ? $coordY + (-900 -$coordY) * cos($degree) : -900;
+
+    $Bx = $coordx - ($Ax - $coordX);
+    $By = $coordY - ($Ay - $coordY);
+
+    $AB = sqrt( pow($Ax-$Bx, 2) + pow($Ay-$By, 2) );
+
+    $check = function ($items) {
+
+        foreach ($items as $item) {
+
+            $diff = $game['spaceship']['coords_q'] - $item['coords_q']; // [-8..8]
+
+            $yFactor = floor( $diff / 3); // [-2, -1, 0, 1, 2]
+            $xFactor = $diff < 0 ? -1 * (abs($diff) % 3) : $diff % 3; // [-2, -1, 0, 1, 2]
+
+            $Cy = ( 200 * $yFactor ) + $item['coords_y'];
+            $Cx = ( -200 * $xFactor) + $item['coords_x'];
+
+            $AC = sqrt( pow($Ax-$Cx, 2) + pow($Ay-$Cy, 2) );
+            $CB = sqrt( pow($Cx-$Bx, 2) + pow($Cy-$By, 2) );
+
+            if ($AC + $CB <= $AB + 10)
+                return $item;
+        }
+        return null;
+    };
+
+    $meteor = check($meteors);
+    $enemy = check($enemies);
+
+    return $meteor ?: $enemy;
+}
+
+function moveObject($object, $direction, $distance, $game) {
+
+    if ($direction < 0 || $direction > 1 ||
+        $distance < 0 || $distance > 100)
+        throw new ErrorException('Invalid input');
+
+    if ($object['fuel'] < $distance / 2)
+        throw new Exception('fuel_low');
+
+    $degree = round( $direction * 360 );
+
+    $coordX = $object['coords_x'];
+    $coordY = $object['coords_y'];
+    $coordQ = $object['coords_q'];
+
+    $newX = $degree ? $coordX - (-101 -$coordY) * sin($degree) : $coordX;
+    $newY = $degree ? $coordY + (-101 -$coordY) * cos($degree) : -101;
+
+    $factor = $distance / (sqrt( pow($newX-$coordX, 2) + pow($newY-$coordY, 2)));
+
+    $newX *= $factor;
+    $newY *= $factor;
+
+    if ($degree < 90) {
+            // right and up.
+            // x++,
+            if ($newX > 100 && in_array($coordQ, [3,6,9])) {
+                $x = 100;
+                $q = $coordQ;
+            } elseif ($newX > 100) {
+                $x = -200 + $newX;
+                $q = $coordQ + 1;
+            } else {
+                $x = $newX;
+                $q = $coordQ;
+            }
+
+            //y --
+            if ($newY < -100 && in_array($coordQ, [1,2,3])) {
+                $y = -100;
+                $q = $q;
+            } elseif ($newY < -100) {
+                $y = 200 + $newY;
+                $q = $q - 3;
+            } else {
+                $y = $newY;
+                $q = $q;
+            }
+    } elseif ($degree < 180) {
+            // right and down.
+            // x++,
+            if ($newX > 100 && in_array($coordQ, [3,6,9])) {
+                $x = 100;
+                $q = $coordQ;
+            } elseif ($newX > 100) {
+                $x = -200 + $newX;
+                $q = $coordQ + 1;
+            } else {
+                $x = $newX;
+                $q = $coordQ;
+            }
+            //y ++
+            if ($newY > 100 && in_array($coordQ, [7,8,9])) {
+                $y = 100;
+                $q = $q;
+            } elseif ($newY > 100) {
+                $y = -200 + $newY;
+                $q = $q + 3;
+            } else {
+                $y = $newY;
+                $q = $q;
+            }
+
+    } elseif ($degree < 270) {
+            // left and down.
+            // x--
+            if ($newX < -100 && in_array($coordQ, [1,4,7])) {
+                $x = -100;
+                $q = $coordQ;
+            } elseif ($newX < -100) {
+                $x = 200 + $newX;
+                $q = $coordQ - 1;
+            } else {
+                $x = $newX;
+                $q = $coordQ;
+            }
+
+            //y ++
+            if ($newY > 100 && in_array($coordQ, [7,8,9])) {
+                $y = 100;
+                $q = $q;
+            } elseif ($newY > 100) {
+                $y = -200 + $newY;
+                $q = $q + 3;
+            } else {
+                $y = $newY;
+                $q = $q;
+            }
+
+    } elseif ($degree <= 360) {
+            //left and up
+            // x--,
+            if ($newX < -100 && in_array($coordQ, [1,4,7])) {
+                $x = -100;
+                $q = $coordQ;
+            } elseif ($newX < -100) {
+                $x = 200 + $newX;
+                $q = $coordQ - 1;
+            } else {
+                $x = $newX;
+                $q = $coordQ;
+            }
+
+            //y--
+            if ($newY < -100 && in_array($coordQ, [1,2,3])) {
+                $y = -100;
+                $q = $q;
+            } elseif ($newY < -100) {
+                $y = 200 + $newY;
+                $q = $q - 3;
+            } else {
+                $y = $newY;
+                $q = $q;
+            }
+    } else {
+            echo $degree;
+            throw new ErrorException('Something went wrong with the angle');
+    }
+
+    checkCoords($x, $y, $q, $game))
+
+    $object['coords_y'] = $y;
+    $object['coords_x'] = $x;
+    $object['coords_q'] = $q;
+
+    $object['fuel'] -= $distance / 2;
+
+    $return $object;
 }
 
 function enemyTurn($telegramId, $game = null)
 {
     if (!$game)
         $game = getGame($telegramId);
+
+    foreach($game['enemies'] as $enemy) {
+        if ($enemy['shield'] <= 100 && $enemy['energy'] > 100) {
+            $enemy['energy'] -= 50;
+            $enemy['shield'] += 50;
+        }
+
+        if ($enemy['health'] < 75) {
+            $enemy['energy'] -= floor($enemy['energy'] / 2);
+            $enemy['shield'] += $enemy['energy'] / 2;
+        }
+
+        if ($enemy['coords_q'] != $game['spaceship']['coords_q']) {
+            $enemy = moveObject($enemy, rand(0,1), rand( $enemy['fuel'] / 8, $enemy['fuel'] / 3 ), $game);
+        }
+    }
 
     return $game;
 }
@@ -33,7 +230,13 @@ function checkCoords($x, $y, $q, $game)
     if (!$check($tanks))
         throw new Exception('tank_event');
 
-    return $check($enemies) && $check($meteors);
+    if (!$check($enemies))
+        throw new Exception('enemies_event');
+
+    if (!$check($meteors))
+        throw new Exception('meteors_event');
+
+    return $game;
 
 }
 

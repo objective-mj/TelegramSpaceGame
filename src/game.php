@@ -2,6 +2,10 @@
 
 require 'game_private.php';
 
+/***********************
+*      UNAFFECTIVE     *
+************************/
+
 function srs($telegramId, $game = null)
 {
     if (!$game)
@@ -28,7 +32,11 @@ function stats($telegramId, $game = null)
     return $game['spaceship'];
 }
 
-function startGame($telegramId)
+/***********************
+*   CHANGES THE GAME   *
+************************/
+
+function startGame($telegramId, $difficulty=1)
 {
     $boardCheck = [
         1 => [],
@@ -56,11 +64,11 @@ function startGame($telegramId)
     ];
 
     $enemies = [];
-    $count = rand(6, 12);
+    $count = rand(5, 8) * $difficulty;
     for ($i = 0; $i < $count; $i++) {
         $enemy = [
-            "health" => 100,
-            "energy" => rand(50, 200),
+            "health" => 100 + 50 * $difficulty,
+            "energy" => rand(50, 150) * $difficulty,
             "shield" => 0,
             "torpedos" => rand(2,4),
             "fuel" => rand(200,500),
@@ -77,7 +85,7 @@ function startGame($telegramId)
     }
 
     $meteors = [];
-    $count = rand(10, 30);
+    $count = rand(8, 18) * $difficulty;
     for ($i = 0; $i < $count; $i++) {
         $meteor = [
             "density" => rand(1,10),
@@ -94,7 +102,7 @@ function startGame($telegramId)
     }
 
     $tanks = [];
-    $count = rand(1, 4);
+    $count = rand(2, 4) - $difficulty;
     for ($i = 0; $i < $count; $i++) {
         $tank = [
             "fuel" => rand(200,1000),
@@ -109,8 +117,6 @@ function startGame($telegramId)
         $boardCheck[$tank["coords_q"]][$tank["coords_y"]] = $tank['coords_x'];
         $tanks[] = $tank;
     }
-
-
 
     return [
         'spaceship' => $spaceship,
@@ -142,16 +148,62 @@ function shield($telegramId, $energy, $game = null)
     return $game;
 }
 
-function torpedo($telegramId, $direction)
+function torpedo($telegramId, $direction, $game = null)
 {
+    if (!$game)
+        $game = getGame($telegramId);
 
-    enemyTurn();
+    $object = fireLine($game, $direction);
+    if ($object && array_key_exists('health', $object)) {
+        $game['spaceship']['score'] += 100;
+        unset( $game['enemies'][array_search($object, $game['enemies'])];
+    } elseif($object) {
+        unset( $game['meteors'][array_search($object, $game['meteors'])];
+    } else {
+        $game = enemyTurn($telegramId, $game);
+        updateGame($telegramId, $game);
+
+        throw new Exception('torpedo_nohit');
+    }
+
+    $game = enemyTurn($telegramId, $game);
+    updateGame($telegramId, $game);
+    return $game;
 }
 
-function laser($telegramId, $direction, $energy)
+function laser($telegramId, $direction, $energy, $game = null)
 {
+    if (!$game)
+        $game = getGame($telegramId);
 
-    enemyTurn();
+    $object = fireLine($game, $direction);
+    if ($object && array_key_exists('health', $object)) {
+        $leftOverEnergy = $object['shield'] - ($energy / 2); // shield requires double energy to be taken down.
+            if ($leftOverEnergy <= 0 ) {
+                $leftOverhealth = $object['health'] - ( -2 * $leftOverEnergy );
+                if ($leftOverhealth <= 0) {
+                    $game['spaceship']['score'] += 100;
+                    unset( $game['enemies'][array_search($object, $game['enemies'])];
+                } else {
+                    $game['enemies'][array_search($object, $game['enemies'])]['$health'] = $leftOverhealth;
+                    $game['enemies'][array_search($object, $game['enemies'])]['$energy'] = 0;
+                }
+            } else {
+                $game['enemies'][array_search($object, $game['enemies'])]['$energy'] =  leftOverEnergy;
+            }
+
+    } elseif($object) {
+        unset( $game['meteors'][array_search($object, $game['meteors'])];
+    } else {
+        $game = enemyTurn($telegramId, $game);
+        updateGame($telegramId, $game);
+
+        throw new Exception('laser_nohit');
+    }
+
+    $game = enemyTurn($telegramId, $game);
+    updateGame($telegramId, $game);
+    return $game;
 }
 
 function move($telegramId, $direction, $distance, $game = null)
@@ -159,141 +211,7 @@ function move($telegramId, $direction, $distance, $game = null)
     if (!$game)
         $game = getGame($telegramId);
 
-    if ($direction < 0 || $direction > 1 ||
-        $distance < 0 || $distance > 100)
-        throw new ErrorException('Invalid input');
-
-    if ($game['spaceship']['fuel'] < $distance / 2)
-        throw new Exception('fuel_low');
-
-    $degree = round( $direction * 360 );
-
-    $coordX = $game['spaceship']['coords_x'];
-    $coordY = $game['spaceship']['coords_y'];
-    $coordQ = $game['spaceship']['coords_q'];
-
-    $newX = $degree ? $coordX - (-101 -$coordY) * sin($degree) : $coordX;
-    $newY = $degree ? $coordY + (-101 -$coordY) * cos($degree) : -101;
-
-    $factor = $distance / (sqrt( pow($newX-$coordX, 2) + pow($newY-$coordY, 2)));
-
-    $newX *= $factor;
-    $newY *= $factor;
-
-    if ($degree < 90) {
-            // right and up.
-            // x++,
-            if ($newX > 100 && in_array($coordQ, [3,6,9])) {
-                $x = 100;
-                $q = $coordQ;
-            } elseif ($newX > 100) {
-                $x = -200 + $newX;
-                $q = $coordQ + 1;
-            } else {
-                $x = $newX;
-                $q = $coordQ;
-            }
-
-            //y --
-            if ($newY < -100 && in_array($coordQ, [1,2,3])) {
-                $y = -100;
-                $q = $q;
-            } elseif ($newY < -100) {
-                $y = 200 + $newY;
-                $q = $q - 3;
-            } else {
-                $y = $newY;
-                $q = $q;
-            }
-    } elseif ($degree < 180) {
-            // right and down.
-            // x++,
-            if ($newX > 100 && in_array($coordQ, [3,6,9])) {
-                $x = 100;
-                $q = $coordQ;
-            } elseif ($newX > 100) {
-                $x = -200 + $newX;
-                $q = $coordQ + 1;
-            } else {
-                $x = $newX;
-                $q = $coordQ;
-            }
-            //y ++
-            if ($newY > 100 && in_array($coordQ, [7,8,9])) {
-                $y = 100;
-                $q = $q;
-            } elseif ($newY > 100) {
-                $y = -200 + $newY;
-                $q = $q + 3;
-            } else {
-                $y = $newY;
-                $q = $q;
-            }
-
-    } elseif ($degree < 270) {
-            // left and down.
-            // x--
-            if ($newX < -100 && in_array($coordQ, [1,4,7])) {
-                $x = -100;
-                $q = $coordQ;
-            } elseif ($newX < -100) {
-                $x = 200 + $newX;
-                $q = $coordQ - 1;
-            } else {
-                $x = $newX;
-                $q = $coordQ;
-            }
-
-            //y ++
-            if ($newY > 100 && in_array($coordQ, [7,8,9])) {
-                $y = 100;
-                $q = $q;
-            } elseif ($newY > 100) {
-                $y = -200 + $newY;
-                $q = $q + 3;
-            } else {
-                $y = $newY;
-                $q = $q;
-            }
-
-    } elseif ($degree <= 360) {
-            //left and up
-            // x--,
-            if ($newX < -100 && in_array($coordQ, [1,4,7])) {
-                $x = -100;
-                $q = $coordQ;
-            } elseif ($newX < -100) {
-                $x = 200 + $newX;
-                $q = $coordQ - 1;
-            } else {
-                $x = $newX;
-                $q = $coordQ;
-            }
-
-            //y--
-            if ($newY < -100 && in_array($coordQ, [1,2,3])) {
-                $y = -100;
-                $q = $q;
-            } elseif ($newY < -100) {
-                $y = 200 + $newY;
-                $q = $q - 3;
-            } else {
-                $y = $newY;
-                $q = $q;
-            }
-    } else {
-            echo $degree;
-            throw new ErrorException('Something went wrong with the angle');
-    }
-
-    if (!checkCoords($x, $y, $q, $game))
-        return $game;
-
-    $game['spaceship']['coords_y'] = $y;
-    $game['spaceship']['coords_x'] = $x;
-    $game['spaceship']['coords_q'] = $q;
-
-    $game['spaceship']['fuel'] -= $distance / 2;
+    $game['spaceship'] = moveObject($game['spaceship'], $angle, $distance, $game, true);
 
     $game = enemyTurn($telegramId, $game);
 

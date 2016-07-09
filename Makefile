@@ -5,8 +5,10 @@ mysql:
 build:
 	docker build -t objective/game .
 
+ROOT_DIR:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
+
 run:
 	docker rm objmj-telegame
-	docker run -v ~/code/TelegramSpaceGame/src:/home/app/space_game -it \
+	docker run -v $(ROOT_DIR)/src:/home/app/space_game -it \
 	--name objmj-telegame --link test-mysql:mysql objective/game /bin/bash -c \
 	"composer require longman/telegram-bot; /bin/bash"
