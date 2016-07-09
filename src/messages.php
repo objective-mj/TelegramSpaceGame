@@ -1,3 +1,3 @@
 <?php
 
-require messages_private;
+require 'messages_private.php';
