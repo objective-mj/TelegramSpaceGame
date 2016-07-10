@@ -14,8 +14,7 @@ function getGame($telegramId)
 
 function createGame($telegramId, $game)
 {
-    createUser($telegramId);
-    updateUser($telegramId, true);
+
 }
 
 function updateGame($telegramId, $game)
@@ -26,4 +25,9 @@ function updateGame($telegramId, $game)
 function deleteGame($telegramId)
 {
     updateUser($telegramId, false);
+}
+
+function addScore($telegramId, $score)
+{
+
 }

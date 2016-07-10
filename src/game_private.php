@@ -49,7 +49,7 @@ function fireLine($game, $direction)
 function moveObject($object, $direction, $distance, $game) {
 
     if ($direction < 0 || $direction > 1 ||
-        $distance < 0 || $distance > 100)
+        $distance <= 0 || $distance > 100)
         throw new ErrorException('Invalid input');
 
     if ($object['fuel'] < $distance / 2)
@@ -61,10 +61,18 @@ function moveObject($object, $direction, $distance, $game) {
     $coordY = $object['coords_y'];
     $coordQ = $object['coords_q'];
 
-    $newX = $degree ? $coordX - (-101 -$coordY) * sin($degree) : $coordX;
-    $newY = $degree ? $coordY + (-101 -$coordY) * cos($degree) : -101;
+    $s = round(sin( deg2rad($degree)), 3);
+    $c = round(cos( deg2rad($degree)), 3);
+
+    $newX = $coordX - ($s * (-100 - $coordY));
+    $newY = $coordY + ($c * (-100 - $coordY));
 
     $factor = $distance / (sqrt( pow($newX-$coordX, 2) + pow($newY-$coordY, 2)));
+
+    echo "old: {$coordX},{$coordY},{$coordQ} new: {$newX},{$newY} factor: {$factor}";
+
+    // SELFNOTE: the factor is multiplied wrong. When the total travel is 80 along one axis from start 80
+    // the answer should be 160 but becomes 180 * 0.8 which is not what I want.
 
     $newX *= $factor;
     $newY *= $factor;
@@ -175,7 +183,7 @@ function moveObject($object, $direction, $distance, $game) {
             throw new ErrorException('Something went wrong with the angle');
     }
 
-    checkCoords($x, $y, $q, $game))
+    checkCoords($x, $y, $q, $game);
 
     $object['coords_y'] = $y;
     $object['coords_x'] = $x;
@@ -183,7 +191,7 @@ function moveObject($object, $direction, $distance, $game) {
 
     $object['fuel'] -= $distance / 2;
 
-    $return $object;
+    return $object;
 }
 
 function enemyTurn($telegramId, $game = null)
@@ -191,19 +199,56 @@ function enemyTurn($telegramId, $game = null)
     if (!$game)
         $game = getGame($telegramId);
 
-    foreach($game['enemies'] as $enemy) {
-        if ($enemy['shield'] <= 100 && $enemy['energy'] > 100) {
-            $enemy['energy'] -= 50;
-            $enemy['shield'] += 50;
+    foreach($game['enemies'] as $key => $enemy) {
+        if ($game['enemies'][$key]['shield'] <= 100 && $game['enemies'][$key]['energy'] > 100) {
+            $game['enemies'][$key]['energy'] -= 50;
+            $game['enemies'][$key]['shield'] += 50;
         }
 
-        if ($enemy['health'] < 75) {
-            $enemy['energy'] -= floor($enemy['energy'] / 2);
-            $enemy['shield'] += $enemy['energy'] / 2;
+        if ($game['enemies'][$key]['health'] < 75) {
+            $game['enemies'][$key]['energy'] -= floor($game['enemies'][$key]['energy'] / 2);
+            $game['enemies'][$key]['shield'] += $game['enemies'][$key]['energy'] / 2;
         }
 
-        if ($enemy['coords_q'] != $game['spaceship']['coords_q']) {
-            $enemy = moveObject($enemy, rand(0,1), rand( $enemy['fuel'] / 8, $enemy['fuel'] / 3 ), $game);
+        if ($game['enemies'][$key]['coords_q'] != $game['enemies'][$key]['spaceship']['coords_q']) {
+            $game['enemies'][$key] = moveObject($game['enemies'][$key], rand(0,1), rand( $game['enemies'][$key]['fuel'] / 8, 100 ), $game);
+        } else {
+            $action = rand(0,30) / 10;
+
+            if ($action < 1) {
+                //torpedo
+                if ($game['enemies'][$key]['torpedos'] > 0) {
+                    $game['enemies'][$key]['torpedos'] -= 1;
+                    $damage = 500;
+                    $damage -= $game['spaceship']['shield'];
+                    $game['spaceship']['shield'] = $damage >= 0 ? 0 : $damage * -1;
+
+                    $damage -= $game['spaceship']['health'];
+                    $game['spaceship']['health'] = $damage >= 0 ? 0 : $damage * -1;
+
+                    if ($game['spaceship']['health'] < 1)
+                        return endGame($telegramId, $game);
+                }
+
+            } elseif ($action < 2) {
+                //laser
+                if ($game['enemies'][$key]['energy'] >= 100) {
+                    $game['enemies'][$key]['energy'] -= 100;
+                    $damage = 100;
+                    $damage -= $game['spaceship']['shield'] * 2;
+                    $game['spaceship']['shield'] = $damage >= 0 ? 0 : $damage * -1;
+
+                    $damage -= $game['spaceship']['health'];
+                    $game['spaceship']['health'] = $damage >= 0 ? 0 : $damage * -1;
+
+                    if ($game['spaceship']['health'] < 1)
+                        return endGame($telegramId, $game);
+                }
+
+            } elseif ($action <= 3) {
+                //move
+                $game['enemies'][$key] = moveObject($game['enemies'][$key], rand(0,1), rand( $game['enemies'][$key]['fuel'] / 8, 60 ), $game);
+            }
         }
     }
 

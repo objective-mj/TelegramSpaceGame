@@ -1,6 +1,7 @@
 <?php
 
 require 'game_private.php';
+require 'database.php';
 
 /***********************
 *      UNAFFECTIVE     *
@@ -70,7 +71,7 @@ function startGame($telegramId, $difficulty=1)
             "health" => 100 + 50 * $difficulty,
             "energy" => rand(50, 150) * $difficulty,
             "shield" => 0,
-            "torpedos" => rand(2,4),
+            "torpedos" => rand(0,3),
             "fuel" => rand(200,500),
             "coords_x" => rand(-100, 100),
             "coords_y" => rand(-100, 100),
@@ -118,18 +119,37 @@ function startGame($telegramId, $difficulty=1)
         $tanks[] = $tank;
     }
 
-    return [
+    $game = [
         'spaceship' => $spaceship,
         'enemies' => $enemies,
         'meteors' => $meteors,
         'tanks' => $tanks
     ];
 
+    createGame($telegramId, $game);
+
+    return $game;
+
 }
 
-function endGame($telegramId)
+function endGame($telegramId, $game = null)
 {
+    if (!$game)
+        $game = getGame($telegramId);
 
+    if($game['spaceship']['health'] > 0)
+        throw new ErrorException('Spaceship still alive');
+
+    $score = $game['spaceship']['score'];
+
+    $score += $game['spaceship']['fuel'] / 50;
+    foreach ($game['tanks'] as $tank)
+        $score += $tank['fuel'] / 50;
+
+    echo "\nSCORE: {$score}\n";
+    addScore($telegramId, $score);
+
+    throw new Exception('game_over');
 }
 
 function shield($telegramId, $energy, $game = null)
@@ -156,9 +176,9 @@ function torpedo($telegramId, $direction, $game = null)
     $object = fireLine($game, $direction);
     if ($object && array_key_exists('health', $object)) {
         $game['spaceship']['score'] += 100;
-        unset( $game['enemies'][array_search($object, $game['enemies'])];
+        unset( $game['enemies'][array_search($object, $game['enemies'])]);
     } elseif($object) {
-        unset( $game['meteors'][array_search($object, $game['meteors'])];
+        unset( $game['meteors'][array_search($object, $game['meteors'])]);
     } else {
         $game = enemyTurn($telegramId, $game);
         updateGame($telegramId, $game);
@@ -183,7 +203,7 @@ function laser($telegramId, $direction, $energy, $game = null)
                 $leftOverhealth = $object['health'] - ( -2 * $leftOverEnergy );
                 if ($leftOverhealth <= 0) {
                     $game['spaceship']['score'] += 100;
-                    unset( $game['enemies'][array_search($object, $game['enemies'])];
+                    unset( $game['enemies'][array_search($object, $game['enemies'])]);
                 } else {
                     $game['enemies'][array_search($object, $game['enemies'])]['$health'] = $leftOverhealth;
                     $game['enemies'][array_search($object, $game['enemies'])]['$energy'] = 0;
@@ -193,7 +213,7 @@ function laser($telegramId, $direction, $energy, $game = null)
             }
 
     } elseif($object) {
-        unset( $game['meteors'][array_search($object, $game['meteors'])];
+        unset( $game['meteors'][array_search($object, $game['meteors'])]);
     } else {
         $game = enemyTurn($telegramId, $game);
         updateGame($telegramId, $game);
