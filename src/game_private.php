@@ -1,5 +1,34 @@
 <?php
 
+function onFireLine($points, $objects) {
+    
+    $Q = $points['Q'];
+    $AB = $points['AB'];
+    $Ax = $points['Ax']; // 0
+    $Ay = $points['Ay']; // 0
+    $Bx = $points['Bx'];
+    $By = $points['By'];
+    
+    foreach ($objects as $item) {
+        if ($Q != $item['coords_q']) continue;
+        $diff = $Q - $item['coords_q']; // [-8..8]
+
+        $yFactor = floor( $diff / 3); // [-2, -1, 0, 1, 2]
+        $xFactor = $diff < 0 ? -1 * (abs($diff) % 3) : $diff % 3; // [-2, -1, 0, 1, 2]
+
+        $Cy = ( 200 * $yFactor ) + $item['coords_y'];
+        $Cx = ( -200 * $xFactor) + $item['coordslaser _x'];
+
+        $AC = sqrt( pow($Ax-$Cx, 2) + pow($Ay-$Cy, 2) );
+        $CB = sqrt( pow($Cx-$Bx, 2) + pow($Cy-$By, 2) );
+
+        if ($AC + $CB <= $AB + 100)
+            echo "You hit something in Q{$item['coords_q']} it has {$item['health']} health left}\n";
+            return $item;
+    }
+    return null;
+}
+
 function fireLine($game, $direction)
 {
     // Contruct a line |AB| that cuts through the ship and the given angle
@@ -7,43 +36,43 @@ function fireLine($game, $direction)
     // Check is C is on or near |AB| by doing |AC|+|CB|==|AB|
 
     $degree = round( $direction * 360 );
-
-    $coordX = $game['spaceship']['coords_x'];
+    
+    $coordX = $game['spaceship']['coords_x']; 
     $coordY = $game['spaceship']['coords_y'];
 
-    $Ax = $degree ? $coordX - (-900 -$coordY) * sin($degree) : $coordX;
-    $Ay = $degree ? $coordY + (-900 -$coordY) * cos($degree) : -900;
+    $Ax = $degree ? $coordX - (-900 - $coordY) * sin($degree) : $coordX;
+    $Ay = $degree ? $coordY + (-900 - $coordY) * cos($degree) : -900;
 
     $Bx = $coordx - ($Ax - $coordX);
     $By = $coordY - ($Ay - $coordY);
 
     $AB = sqrt( pow($Ax-$Bx, 2) + pow($Ay-$By, 2) );
-
-    $check = function ($items) {
-
-        foreach ($items as $item) {
-
-            $diff = $game['spaceship']['coords_q'] - $item['coords_q']; // [-8..8]
-
-            $yFactor = floor( $diff / 3); // [-2, -1, 0, 1, 2]
-            $xFactor = $diff < 0 ? -1 * (abs($diff) % 3) : $diff % 3; // [-2, -1, 0, 1, 2]
-
-            $Cy = ( 200 * $yFactor ) + $item['coords_y'];
-            $Cx = ( -200 * $xFactor) + $item['coords_x'];
-
-            $AC = sqrt( pow($Ax-$Cx, 2) + pow($Ay-$Cy, 2) );
-            $CB = sqrt( pow($Cx-$Bx, 2) + pow($Cy-$By, 2) );
-
-            if ($AC + $CB <= $AB + 10)
-                return $item;
-        }
-        return null;
-    };
-
-    $meteor = check($meteors);
-    $enemy = check($enemies);
+    
+    $points = [
+        'Q' => $game['spaceship']['coords_q'],
+        'AB' => $AB,
+        'Ax' => $Ax,
+        'Ay' => $Ay,
+        'Bx' => $Bx,
+        'By' => $By,
+        
+    ];
+    
+    $meteor = onFireLine($points, $game['meteors']);
+    $enemy = onFireLine($points, $game['enemies']);
 
     return $meteor ?: $enemy;
+    
+}
+
+function damage($object, $dmg) {
+    $dmg -= $object['shield'];
+    $object['shield'] = $dmg >= 0 ? 0 : $dmg * -1;
+
+    $dmg -= $object['health'];
+    $object['health'] = $dmg >= 0 ? 0 : $dmg * -1;
+    
+    return $object;
 }
 
 function moveObject($object, $direction, $distance, $game) {
@@ -183,15 +212,13 @@ function moveObject($object, $direction, $distance, $game) {
             throw new ErrorException('Something went wrong with the angle');
     }
 
-    checkCoords($x, $y, $q, $game);
-
     $object['coords_y'] = $y;
     $object['coords_x'] = $x;
     $object['coords_q'] = $q;
 
     $object['fuel'] -= $distance / 2;
 
-    return $object;
+    return checkCoords($x, $y, $q, $object, $game);
 }
 
 function enemyTurn($telegramId, $game = null)
@@ -200,54 +227,71 @@ function enemyTurn($telegramId, $game = null)
         $game = getGame($telegramId);
 
     foreach($game['enemies'] as $key => $enemy) {
+        
+        // if shield low, regenerate
         if ($game['enemies'][$key]['shield'] <= 100 && $game['enemies'][$key]['energy'] > 100) {
             $game['enemies'][$key]['energy'] -= 50;
             $game['enemies'][$key]['shield'] += 50;
         }
 
+        // if health low, use half energy added to shield
         if ($game['enemies'][$key]['health'] < 75) {
             $game['enemies'][$key]['energy'] -= floor($game['enemies'][$key]['energy'] / 2);
             $game['enemies'][$key]['shield'] += $game['enemies'][$key]['energy'] / 2;
         }
 
-        if ($game['enemies'][$key]['coords_q'] != $game['enemies'][$key]['spaceship']['coords_q']) {
-            $game['enemies'][$key] = moveObject($game['enemies'][$key], rand(0,1), rand( $game['enemies'][$key]['fuel'] / 8, 100 ), $game);
+        // move within same quadrant if player isn't there
+        if ($game['enemies'][$key]['coords_q'] != $game['spaceship']['coords_q']) {
+            echo "Enemy $key outside Q\n";
+            //$game['enemies'][$key] = moveObject($game['enemies'][$key], rand(0,1), rand( $game['enemies'][$key]['fuel'] / 8, 100 ), $game);
         } else {
-            $action = rand(0,30) / 10;
+            $action = rand(5,30) / 10;
+            
+            echo "Enemy $key in Q taking action $action\n";
 
             if ($action < 1) {
                 //torpedo
                 if ($game['enemies'][$key]['torpedos'] > 0) {
                     $game['enemies'][$key]['torpedos'] -= 1;
-                    $damage = 500;
-                    $damage -= $game['spaceship']['shield'];
-                    $game['spaceship']['shield'] = $damage >= 0 ? 0 : $damage * -1;
-
-                    $damage -= $game['spaceship']['health'];
-                    $game['spaceship']['health'] = $damage >= 0 ? 0 : $damage * -1;
-
+                    $game['spaceship'] = damage($game['spaceship'], 150);
+                    
                     if ($game['spaceship']['health'] < 1)
                         return endGame($telegramId, $game);
                 }
 
             } elseif ($action < 2) {
                 //laser
-                if ($game['enemies'][$key]['energy'] >= 100) {
-                    $game['enemies'][$key]['energy'] -= 100;
-                    $damage = 100;
-                    $damage -= $game['spaceship']['shield'] * 2;
-                    $game['spaceship']['shield'] = $damage >= 0 ? 0 : $damage * -1;
-
-                    $damage -= $game['spaceship']['health'];
-                    $game['spaceship']['health'] = $damage >= 0 ? 0 : $damage * -1;
-
+                if ($game['enemies'][$key]['energy'] >= 60) {
+                    $game['enemies'][$key]['energy'] -= 60;
+                    $game['spaceship'] = damage($game['spaceship'], 60);
+                    
                     if ($game['spaceship']['health'] < 1)
                         return endGame($telegramId, $game);
                 }
 
             } elseif ($action <= 3) {
                 //move
-                $game['enemies'][$key] = moveObject($game['enemies'][$key], rand(0,1), rand( $game['enemies'][$key]['fuel'] / 8, 60 ), $game);
+                $retry = false;
+                while ($retry){
+                    try {
+                        $game['enemies'][$key] = moveObject(
+                            $game['enemies'][$key], 
+                            rand(0,1), 
+                            rand( $game['enemies'][$key]['fuel'] / 8, 60 ), 
+                            $game
+                        );
+                    } catch (MyException $e) {
+                        if ($e->getMessage() == "tank_event" || 
+                            $e->getMessage() == "enemy_event" ||
+                            $e->getMessage() == "meteor_event") 
+                        {
+                            $retry = true;
+                            continue;
+                        } else {
+                            throw $e;
+                        }
+                    }
+                }
             }
         }
     }
@@ -255,33 +299,33 @@ function enemyTurn($telegramId, $game = null)
     return $game;
 }
 
-function checkCoords($x, $y, $q, $game)
+function findItem($items, $x, $y, $q) {
+    foreach ($items as $key => $item) {
+        if ($item['coords_q'] != $q)
+            continue;
+        if ( $x < $item['coords_x'] + 10 && $x > $item['coords_x'] - 10  &&
+             $y < $item['coords_y'] + 10 && $y > $item['coords_y'] - 10 )
+             return $key + 1;
+    }
+    return false;   
+}
+
+function checkCoords($x, $y, $q, $object, $game)
 {
     $enemies = $game['enemies'];
     $meteors = $game['meteors'];
     $tanks = $game['tanks'];
 
-    $check = function ($items) use ($x, $y, $q) {
-        foreach ($items as $item) {
-            if ($item['coords_q'] != $q)
-                continue;
-            if ( $x < $item['coords_x'] + 10 && $x > $item['coords_x'] - 10  &&
-                 $y < $item['coords_y'] + 10 && $y > $item['coords_y'] - 10 )
-                 return false;
-        }
-        return true;
-    };
+    if ($coelision = findItem($tanks, $x, $y, $q))
+        throw new MyException('tank_event', $object, $coelision);
 
-    if (!$check($tanks))
-        throw new Exception('tank_event');
+    if ($coelision = findItem($enemies, $x, $y, $q))
+        throw new MyException('enemy_event', $object, $coelision);
 
-    if (!$check($enemies))
-        throw new Exception('enemies_event');
+    if ($coelision = findItem($meteors, $x, $y, $q))
+        throw new MyException('meteor_event', $object, $coelision);
 
-    if (!$check($meteors))
-        throw new Exception('meteors_event');
-
-    return $game;
+    return $object;
 
 }
 

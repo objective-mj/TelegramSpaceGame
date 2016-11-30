@@ -1,7 +1,8 @@
 mysql:
+	-sudo /etc/init.d/mysql start
 	-docker stop test-mysql
 	-docker rm test-mysql
-	docker run --name test-mysql -e MYSQL_ROOT_PASSWORD=1234 -e MYSQL_DATABASE=test -e MYSQL_USER=user -e MYSQL_PASSWORD=1234  -d mysql:5.7
+	-docker run --name test-mysql -e MYSQL_ROOT_PASSWORD=1234 -e MYSQL_DATABASE=test -e MYSQL_USER=user -e MYSQL_PASSWORD=1234  -d mysql:5.7
 
 build:
 	docker build -t objective/game .

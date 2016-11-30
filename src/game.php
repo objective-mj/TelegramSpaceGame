@@ -5,6 +5,7 @@ require 'database.php';
 
 /***********************
 *      UNAFFECTIVE     *
+*     string outputs   *
 ************************/
 
 function srs($telegramId, $game = null)
@@ -29,8 +30,17 @@ function stats($telegramId, $game = null)
     if (!$game)
         $game = getGame($telegramId);
 
-    unset($game['spaceship']['coords_x'], $game['spaceship']['coords_y'], $game['spaceship']['coords_q']);
-    return $game['spaceship'];
+    unset($game['spaceship']['coords_x'], 
+        $game['spaceship']['coords_y'], 
+        $game['spaceship']['coords_q'],
+        $game['spaceship']['id'],
+        $game['spaceship']['telegram_id'],
+        $game['spaceship']['version']);
+    $result = "Your spaceship looks as follows:\n";
+    foreach ($game['spaceship'] as $key => $val) {
+        $result .= "$key = $val\n";
+    }
+    return $result;
 }
 
 /***********************
@@ -126,9 +136,7 @@ function startGame($telegramId, $difficulty=1)
         'tanks' => $tanks
     ];
 
-    createGame($telegramId, $game);
-
-    return $game;
+    return createGame($telegramId, $game);
 
 }
 
@@ -183,7 +191,7 @@ function torpedo($telegramId, $direction, $game = null)
         $game = enemyTurn($telegramId, $game);
         updateGame($telegramId, $game);
 
-        throw new Exception('torpedo_nohit');
+        throw new MyException('torpedo_nohit');
     }
 
     $game = enemyTurn($telegramId, $game);
@@ -195,43 +203,69 @@ function laser($telegramId, $direction, $energy, $game = null)
 {
     if (!$game)
         $game = getGame($telegramId);
-
+        
+    if ($game['spaceship']['energy'] < $energy) {
+        return "Not enough energy!";
+    }
+    $game['spaceship']['energy'] -= $energy; 
+    
     $object = fireLine($game, $direction);
     if ($object && array_key_exists('health', $object)) {
-        $leftOverEnergy = $object['shield'] - ($energy / 2); // shield requires double energy to be taken down.
-            if ($leftOverEnergy <= 0 ) {
-                $leftOverhealth = $object['health'] - ( -2 * $leftOverEnergy );
+        $index = array_search($object, $game['enemies']);
+        $leftOverShield = $object['shield'] - ($energy / 2); // shield requires double energy to be taken down.
+            if ($leftOverShield <= 0 ) {
+                $leftOverhealth = $object['health'] - ( -2 * $leftOverShield );
                 if ($leftOverhealth <= 0) {
                     $game['spaceship']['score'] += 100;
-                    unset( $game['enemies'][array_search($object, $game['enemies'])]);
+                    unset( $game['enemies'][$index]);
                 } else {
-                    $game['enemies'][array_search($object, $game['enemies'])]['$health'] = $leftOverhealth;
-                    $game['enemies'][array_search($object, $game['enemies'])]['$energy'] = 0;
+                    $game['enemies'][$index]['$health'] = $leftOverhealth;
+                    $game['enemies'][$index]['$energy'] = 0;
                 }
             } else {
-                $game['enemies'][array_search($object, $game['enemies'])]['$energy'] =  leftOverEnergy;
+                $game['enemies'][$index]['shield'] =  $leftOverShield;
             }
 
     } elseif($object) {
         unset( $game['meteors'][array_search($object, $game['meteors'])]);
     } else {
-        $game = enemyTurn($telegramId, $game);
-        updateGame($telegramId, $game);
-
-        throw new Exception('laser_nohit');
+        $game['extra'] = 'laser_nohit';
     }
 
     $game = enemyTurn($telegramId, $game);
-    updateGame($telegramId, $game);
-    return $game;
+    return updateGame($telegramId, $game);
 }
 
 function move($telegramId, $direction, $distance, $game = null)
 {
     if (!$game)
         $game = getGame($telegramId);
+        
+    $result = null;
 
-    $game['spaceship'] = moveObject($game['spaceship'], $angle, $distance, $game, true);
+    try {
+        $game['spaceship'] = moveObject($game['spaceship'], $angle, $distance, $game, true);
+    } catch (MyException $e) {
+        $game['spaceship'] = $e->getObject();
+        if ($e->getMessage() == "tank_event") {
+            $game['extra'] = "tank";
+        } elseif ($e->getMessage() == 'enemy_event') {
+            $game['spaceship'] = damage($game['spaceship'], 60);
+            if ($game['spaceship']['health'] < 1) {
+                return endGame($telegramId, $game);
+            }
+            unset($game['enemies'][$e->getCoelision()]);
+            $game['extra'] = "enemy";
+        } elseif ($e->getMessage() == 'meteor_event') {
+            $game['spaceship'] = damage($game['spaceship'], 
+                $game['meteors'][$e->getCoelision()]['density'] * 10);
+            if ($game['spaceship']['health'] < 1) {
+                return endGame($telegramId, $game);
+            }
+            unset($game['meteors'][$e->getCoelision()]);
+            $game['extra'] = 'meteor';
+        }
+    }
 
     $game = enemyTurn($telegramId, $game);
 
