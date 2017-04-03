@@ -13,7 +13,7 @@ run:
 	-docker rm objmj-telegame
 	docker run -v $(ROOT_DIR)/src:/home/app/space_game -it \
 	--name objmj-telegame --link test-mysql:mysql objective/game /bin/bash -c \
-	"composer require longman/telegram-bot; /bin/bash"
+	"composer install; /bin/bash"
 
 clean:
 	-docker stop test-mysql
